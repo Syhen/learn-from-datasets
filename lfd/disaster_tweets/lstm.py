@@ -49,8 +49,10 @@ class DisasterTweetsBertDataset(Dataset):
         return len(self.words["input_ids"])
 
     def __getitem__(self, item):
-        return torch.LongTensor(self.words["input_ids"][item]), torch.LongTensor(self.words["attention_mask"][item]), \
-               torch.FloatTensor([self.target[item]])
+        a, b = torch.LongTensor(self.words["input_ids"][item]), torch.LongTensor(self.words["attention_mask"][item])
+        if self.target is not None:
+            return a, b, torch.FloatTensor([self.target[item]])
+        return a, b
 
 
 class BasicLSTM(nn.Module):
@@ -160,7 +162,7 @@ def fit(model_class, model_parameters, X, y, X_test, criterion, scoring="f1", cv
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True)
 
         val_dataset = DisasterTweetsDataset(X_val, y_val)
-        val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=True)
+        val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=False)
         model = model_class(**model_parameters)
 
         optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
