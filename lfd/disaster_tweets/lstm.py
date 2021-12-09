@@ -36,12 +36,12 @@ class DisasterTweetsDataset(Dataset):
 
 
 class DisasterTweetsBertDataset(Dataset):
-    def __init__(self, words_or_texts, target, tokenizer):
+    def __init__(self, words_or_texts, target, tokenizer, max_length=90):
         super(DisasterTweetsBertDataset, self).__init__()
         if isinstance(words_or_texts[0], (list, np.ndarray)):
             self.words = words_or_texts
         if isinstance(words_or_texts[0], str):
-            encoding = tokenizer(words_or_texts, padding=True, truncation=True, max_length=90)
+            encoding = tokenizer(words_or_texts, padding="max_length", truncation=True, max_length=max_length)
             self.words = encoding
         self.target = target
 
