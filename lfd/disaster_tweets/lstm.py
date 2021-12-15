@@ -239,7 +239,7 @@ if __name__ == '__main__':
     print(word_embedding.shape)
     model_parameters["word_embedding"] = word_embedding
     seed_everything(42)
-    test_pred = fit(model_class, model_parameters, X, y, X_test, criterion, epochs=30, label_smoothing=0.1)
+    test_pred, oof = fit(model_class, model_parameters, X, y, X_test, criterion, epochs=25, label_smoothing=0.1)
     df_submit = pd.DataFrame()
     df_submit["id"] = test["id"]
     df_submit["target"] = (test_pred > 0.5).astype(int)
