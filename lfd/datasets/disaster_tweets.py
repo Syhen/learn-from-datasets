@@ -20,7 +20,7 @@ def load_disaster_tweets(path=None):
     return train, test
 
 
-def make_cv_disaster_tweets(X, y, cv=5, force=False):
+def make_cv_disaster_tweets(X, y, cv=5, force=False, return_filename=False):
     def _index_to_folds(fold_df):
         n_folds = fold_df.fold.nunique()
         for fold in range(n_folds):
@@ -30,10 +30,14 @@ def make_cv_disaster_tweets(X, y, cv=5, force=False):
 
     filename = str(settings.PATH_DATASETS / f"{settings.NAME_DISASTER_TWEETS}/fold-{cv}.csv")
     if os.path.isfile(filename) and not force:
+        if return_filename:
+            return filename
         return list(_index_to_folds(pd.read_csv(filename)))
     kfold = StratifiedKFold(cv, shuffle=True, random_state=42)
     df = pd.DataFrame({"target": y})
     for i, (_, val_idx) in enumerate(kfold.split(X, y)):
         df.loc[val_idx, "fold"] = i
     df[["fold"]].to_csv(filename, index=False)
+    if return_filename:
+        return filename
     return list(_index_to_folds(df))

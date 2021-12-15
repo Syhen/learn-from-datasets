@@ -2,25 +2,31 @@
 @created by: heyao
 @created at: 2021-12-08 14:39:47
 """
+import re
+
 import numpy as np
 import pandas as pd
 from sklearn import linear_model
-from sklearn import naive_bayes
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import OneHotEncoder
 from nltk import word_tokenize
 from nltk.stem import PorterStemmer
 
+from lfd import settings
 from lfd.datasets import load_disaster_tweets
 from lfd.cv import KFoldTrainer
 from lfd.datasets.disaster_tweets import make_cv_disaster_tweets
 
 
 stemmer = PorterStemmer()
+PATTERN_URL = re.compile(r"https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)")
+PATTERN_AT = re.compile(r"\@.*? ")
 
 
 def clean(text):
     text = text.lower()
+    text = PATTERN_URL.sub("", text)
+    text = PATTERN_AT.sub("", text)
     if "#" in text:
         text = text.replace("#", "")
     return text
@@ -63,16 +69,25 @@ def keyword_feature(train, test):
 
 
 def train_model(X, y, X_test, name):
-    fold_filename = make_cv_disaster_tweets(X, y, cv=5)
+    fold_filename = make_cv_disaster_tweets(X, y, cv=5, return_filename=True)
     model_class = linear_model.LogisticRegression
     trainer = KFoldTrainer(model_class, {}, cv=fold_filename)
     trainer.fit(X, y)
     trainer.display(threshold=0.5, scoring="f1")
     test_pred = trainer.predict(X_test)
+    df_oof = pd.DataFrame()
+    df_oof["id"] = train["id"]
+    df_oof["oof"] = trainer.oof
+    filename = settings.OUTPUTS / f"{settings.NAME_DISASTER_TWEETS}/{name}-oof.csv"
+    print(f"save oof to {filename}")
+    df_oof.to_csv(filename, index=False)
+
     df_submit = pd.DataFrame()
     df_submit["id"] = test["id"]
     df_submit["target"] = test_pred
-    df_submit.to_csv(f"/Users/heyao/Desktop/{name}.csv", index=False)
+    filename = settings.OUTPUTS / f"{settings.NAME_DISASTER_TWEETS}/{name}.csv"
+    print(f"save prediction to {filename}")
+    df_submit.to_csv(filename, index=False)
 
 
 def tfidf_baseline(train, test):
@@ -87,6 +102,7 @@ def tfidf_plus_keyword(train, test):
     #
     # cross fold, mean: 0.75189, std: 0.01375
     # out of fold: 0.75175
+    # 0.75748
     X, X_test, y = tfidf_feature(train, test)
     X_keywords, X_test_keywords = keyword_feature(train, test)
     X = np.concatenate([X, X_keywords], axis=1)
@@ -96,9 +112,12 @@ def tfidf_plus_keyword(train, test):
 
 
 if __name__ == '__main__':
+    import os
     import warnings
 
     warnings.filterwarnings("ignore")
+
+    os.makedirs(settings.OUTPUTS / settings.NAME_DISASTER_TWEETS, exist_ok=True)
     train, test = load_disaster_tweets()
     tfidf_plus_keyword(train, test)
     # tfidf_baseline(train, test)

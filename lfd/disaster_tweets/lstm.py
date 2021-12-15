@@ -11,6 +11,7 @@ from nltk import word_tokenize
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
 
+from lfd import settings
 from lfd.datasets.disaster_tweets import make_cv_disaster_tweets
 from lfd.layers import Attention
 from lfd.utils.meters import AverageMeter, AccumulateMeter, get_scoring
@@ -107,7 +108,9 @@ def evaluate(model, dataloader, criterion, scoring, best_score=None, fold=1):
     if max(score, best_score) == score:
         tqdm_obj.set_postfix({"loss": f"{meter.avg:.5f}", scoring: f"{score_meter.avg:.5f}", "on": "'validation'",
                               "best_score": f"{max(score, best_score):.5f}(saved!)"})
-        torch.save(model.state_dict(), f"/Users/heyao/Desktop/{model.__class__.__name__}_{fold}.pth")
+        model_path = settings.MODELS / settings.NAME_DISASTER_TWEETS / f"{model.__class__.__name__}_{fold}.pth"
+        print(f"save model to {model_path}")
+        torch.save(model.state_dict(), model_path)
     return score
 
 
@@ -150,7 +153,8 @@ def train_one_epoch(model, dataloader, val_dataloader, criterion, optimizer, sco
             score = evaluate(model, val_dataloader, criterion, scoring, best_score=best_score, fold=fold)
             best_score = max(best_score, score)
             model.train()
-    return evaluate(model, val_dataloader, criterion, scoring, best_score=best_score, fold=fold)
+    score = evaluate(model, val_dataloader, criterion, scoring, best_score=best_score, fold=fold)
+    return max(score, best_score)
 
 
 def fit(model_class, model_parameters, X, y, X_test, criterion, scoring="f1", cv=5, epochs=1, label_smoothing=0.1,
@@ -177,17 +181,26 @@ def fit(model_class, model_parameters, X, y, X_test, criterion, scoring="f1", cv
     folds = make_cv_disaster_tweets(X, y, cv=cv)
     predictions = []
     scores = []
+    oof = np.zeros((y.shape[0], ))
     for fold, (train_idx, val_idx) in enumerate(folds, 1):
         score = _fit_one_fold(train_idx, val_idx, X, y, fold, epochs=epochs, label_smoothing=label_smoothing)
         scores.append(score)
         model = model_class(**model_parameters)
-        model.load_state_dict(torch.load(f"/Users/heyao/Desktop/{model.__class__.__name__}_{fold}.pth"))
+        model_path = settings.MODELS / settings.NAME_DISASTER_TWEETS / f"{model.__class__.__name__}_{fold}.pth"
+        print(f"load model from {model_path}")
+        model.load_state_dict(torch.load(model_path))
+
         dataset = DisasterTweetsDataset(X_test, target=None)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=128, shuffle=False)
         test_pred = predict(model, dataloader)
+
+        dataset = DisasterTweetsDataset(X[val_idx], target=None)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=128, shuffle=False)
+        val_pred = predict(model, dataloader)
+        oof[val_idx] = val_pred.reshape(-1, )
         predictions.append(test_pred)
     print(f"mean: {np.mean(scores):.5f}, std: {np.std(scores):.5f}")
-    return np.concatenate(predictions, axis=1).mean(axis=1)
+    return np.concatenate(predictions, axis=1).mean(axis=1), oof
 
 
 if __name__ == '__main__':
@@ -219,7 +232,9 @@ if __name__ == '__main__':
         lstm_size=40, embedding_dim=50, bidirectional=False
     )
     embedding_dim = 50
-    word_embedding = load_word_embedding(f"/Users/heyao/Downloads/glove.6B.{embedding_dim}d.txt", tokenizer.word_index,
+    embedding_path = settings.EMBEDDING_PATH / f"glove.6B.{embedding_dim}d.txt"
+    print(f"load embedding from {embedding_path}")
+    word_embedding = load_word_embedding(embedding_path, tokenizer.word_index,
                                          vector_size=embedding_dim)
     print(word_embedding.shape)
     model_parameters["word_embedding"] = word_embedding
@@ -228,4 +243,4 @@ if __name__ == '__main__':
     df_submit = pd.DataFrame()
     df_submit["id"] = test["id"]
     df_submit["target"] = (test_pred > 0.5).astype(int)
-    df_submit.to_csv("/Users/heyao/Desktop/lstm-ls.csv", index=False)
+    df_submit.to_csv(settings.OUTPUTS / settings.NAME_DISASTER_TWEETS / "lstm-ls.csv", index=False)
